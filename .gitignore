@@ -1,0 +1,26 @@
+# Local environment files: commit only a sanitized example
+.env
+.env.*
+!.env.example
+/srcs/.env
+/srcs/.env.*
+!/srcs/.env.example
+
+# Real secret files and local credentials
+/secrets/
+**/secrets/
+*.key
+*.pem
+
+# Database exports and local data
+*.sql
+*.sql.gz
+*.dump
+/data/
+
+# OS/editor temporary files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
