@@ -1,0 +1,5 @@
+*
+!Dockerfile
+!tools/
+!tools/entrypoint.sh
+!tools/healthcheck.sh
