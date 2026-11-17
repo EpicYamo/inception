@@ -5,6 +5,7 @@ DATA_DIR=/var/lib/mysql
 RUN_DIR=/run/mysqld
 SOCKET="$RUN_DIR/mysqld.sock"
 PID_FILE="$RUN_DIR/mysqld.pid"
+INITIALIZED_MARKER="$DATA_DIR/.inception_initialized"
 TEMP_PID=
 
 fail() {
@@ -19,7 +20,7 @@ cleanup() {
 	fi
 }
 
-if [ ! -d "$DATA_DIR/mysql" ]; then
+if [ ! -f "$INITIALIZED_MARKER" ]; then
 	: "${MYSQL_DATABASE:?MYSQL_DATABASE is required}"
 	: "${MYSQL_USER:?MYSQL_USER is required}"
 	[ -s /run/secrets/db_root_password ] || fail "The database root password secret is missing or empty."
@@ -42,7 +43,9 @@ if [ ! -d "$DATA_DIR/mysql" ]; then
 	esac
 
 	install -d -o mysql -g mysql "$RUN_DIR" "$DATA_DIR"
-	mariadb-install-db --user=mysql --datadir="$DATA_DIR" --auth-root-authentication-method=normal --skip-test-db
+	if [ ! -d "$DATA_DIR/mysql" ]; then
+		mariadb-install-db --user=mysql --datadir="$DATA_DIR" --auth-root-authentication-method=normal --skip-test-db
+	fi
 
 	mariadbd --user=mysql --datadir="$DATA_DIR" --socket="$SOCKET" --pid-file="$PID_FILE" --skip-networking &
 	TEMP_PID=$!
@@ -50,10 +53,11 @@ if [ ! -d "$DATA_DIR/mysql" ]; then
 
 	mariadb-admin --socket="$SOCKET" --user=root --wait=30 ping
 
-	mariadb --socket="$SOCKET" --user=root <<SQL
+mariadb --socket="$SOCKET" --user=root <<SQL
 ALTER USER 'root'@'localhost' IDENTIFIED BY '${ROOT_PASSWORD}';
-CREATE DATABASE ${MYSQL_DATABASE};
-CREATE USER '${MYSQL_USER}'@'%' IDENTIFIED BY '${DB_PASSWORD}';
+CREATE DATABASE IF NOT EXISTS ${MYSQL_DATABASE};
+CREATE USER IF NOT EXISTS '${MYSQL_USER}'@'%' IDENTIFIED BY '${DB_PASSWORD}';
+ALTER USER '${MYSQL_USER}'@'%' IDENTIFIED BY '${DB_PASSWORD}';
 GRANT ALL PRIVILEGES ON ${MYSQL_DATABASE}.* TO '${MYSQL_USER}'@'%';
 FLUSH PRIVILEGES;
 SQL
@@ -62,6 +66,8 @@ SQL
 	wait "$TEMP_PID"
 	TEMP_PID=
 	trap - EXIT
+	touch "$INITIALIZED_MARKER"
+	chown mysql:mysql "$INITIALIZED_MARKER"
 fi
 
 exec mariadbd --user=mysql --console --bind-address=0.0.0.0 "$@"
